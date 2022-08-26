@@ -24,15 +24,6 @@
     <ClInclude Include="classes.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="jni.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="jni_md.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="jvmti.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
     <ClInclude Include="dllmain.h">
       <Filter>头文件</Filter>
     </ClInclude>

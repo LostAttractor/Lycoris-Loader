@@ -84,8 +84,7 @@ DWORD WINAPI MainThread(JNIEnv* env)
         {
 
             JavaVM* jvm = buffer[i];
-            JNIEnv* jniEnv = env;
-            jvmtiEnv* jvmTiEnv = NULL;
+            jvmtiEnv* jvmTiEnv;
 ;
             jvm->GetEnv((void**)(&jvmTiEnv), JVMTI_VERSION);
             if (!jvmTiEnv)
@@ -189,7 +188,7 @@ DWORD WINAPI MainThread(JNIEnv* env)
             
 
             
-            java_lang_ClassLoader = jniEnv->FindClass("java/lang/ClassLoader");
+            java_lang_ClassLoader = env->FindClass("java/lang/ClassLoader");
             if (!CtxClassLoader) {
                 MessageBoxA(NULL, "Minecraft Not Found", randstr(name, 8), MB_OK | MB_ICONERROR);
                 break;
@@ -204,12 +203,12 @@ DWORD WINAPI MainThread(JNIEnv* env)
                     tempClassIndex++;;
                     lastClass[classIndex] = classes[lastClassIndex + classIndex];
                 }
-                loadClass = jniEnv->DefineClass(NULL, CtxClassLoader, (jbyte*)lastClass, classSizes[j]);
+                loadClass = env->DefineClass(NULL, CtxClassLoader, (jbyte*)lastClass, classSizes[j]);
 
                 char* signature;
                 jvmTiEnv->GetClassSignature(loadClass, &signature, NULL);
                 printf("[Loader] Defining class %s +\n", signature);
-                if (!strcmp(signature, "Ltest/loader;"))
+                if (!strcmp(signature, "LLoader;"))
                 {
                     loaderClass = loadClass;
                 }
@@ -225,13 +224,13 @@ DWORD WINAPI MainThread(JNIEnv* env)
                 break;
             }
             jmethodID loaderid = NULL;
-            loaderid = jniEnv->GetMethodID(loaderClass, "<init>", "()V");
+            loaderid = env->GetMethodID(loaderClass, "<init>", "()V");
 
             if (!loaderid) {
                 printf("[Loader] Loader method not found");
             }
 
-            jobject LoadClent = jniEnv->NewObject(loaderClass, loaderid);
+            jobject LoadClent = env->NewObject(loaderClass, loaderid);
             if (!LoadClent) {
                 printf("[Loader] new Load Client Error");
             }
@@ -243,11 +242,6 @@ DWORD WINAPI MainThread(JNIEnv* env)
 }
 
 
-
-
-
-
-
 PVOID unload(PVOID arg) {
     HMODULE hm = NULL;
     GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
@@ -255,8 +249,6 @@ PVOID unload(PVOID arg) {
         (LPWSTR)&unload, &hm);
     FreeLibraryAndExitThread(hm, 0);
 }
-
-
 
 
 //====================================================================================================
@@ -276,11 +268,6 @@ void nglFlush_Hook(JNIEnv* env, jclass clazz, jlong lVar) {
 //====================================================================================================
 
 
-
-
-
-
-
 PVOID WINAPI hook(PVOID arg) {
     HMODULE jvm = GetModuleHandlePeb(L"lwjgl64.dll");
 
@@ -289,7 +276,6 @@ PVOID WINAPI hook(PVOID arg) {
 
     return NULL;
 }
-
 
 extern "C" __declspec(dllexport) BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
 {
@@ -301,8 +287,9 @@ extern "C" __declspec(dllexport) BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD
         //  MessageBoxA(NULL, "ATTACHED", "NHC", MB_OK | MB_ICONINFORMATION);
         AllocConsole();
         HANDLE hdlWrite = GetStdHandle(STD_OUTPUT_HANDLE);
-        freopen("CONOUT$", "w+t", stdout);
-        freopen("CONIN$", "r+t", stdin);
+        FILE* stream;
+        freopen_s(&stream, "CONOUT$", "w+t", stdout);
+        freopen_s(&stream, "CONIN$", "r+t", stdin);
         CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)hook, NULL, 0, NULL);
         break;
     }
