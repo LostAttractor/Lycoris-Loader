@@ -12,9 +12,6 @@
 #include "utils.h"
 #include "loader.h"
 
-#pragma comment(lib, "HookLib.lib")
-#pragma comment(lib, "Zydis.lib")
-
 char* randstr(const int len) {
     char str[20];
     int i;
@@ -55,7 +52,7 @@ DWORD WINAPI MainThread(JNIEnv* env) {
     }
 
     typedef jint(JNICALL* GetCreatedJavaVMs)(JavaVM**, jsize, jsize*);
-    GetCreatedJavaVMs jni_GetCreatedJavaVMs = (GetCreatedJavaVMs)GetProcAddress(jvmDll, "JNI_GetCreatedJavaVMs");;
+    GetCreatedJavaVMs jni_GetCreatedJavaVMs = (GetCreatedJavaVMs)GetProcAddress(jvmDll, "JNI_GetCreatedJavaVMs");
 
     typedef jclass(*FindClassFromCaller)(JNIEnv* env, const char* name, jboolean init, jobject loader, jclass caller);
     FindClassFromCaller findClassFromCaller = (FindClassFromCaller)GetProcAddress(jvmDll, "JVM_FindClassFromCaller");
@@ -83,36 +80,11 @@ DWORD WINAPI MainThread(JNIEnv* env) {
     jclass launchClassLoaderClass = NULL;
     jclass enityRenderClass = NULL;
     jclass LaunchWrapper = NULL;
-    jclass java_lang_ClassLoader = NULL;
-    jobject CtxClassLoader = NULL;
-
-    /////让我们通过这↑里↓ 来获取所有的线程 从而得到ClientThread 并拿到 CtxCL/////
-    //线程类
-    jclass thread = NULL;
-    //获取所有的栈追踪
-    jmethodID getAllStackTraces = NULL;
-    //获取名字
-    jmethodID getThreadName = NULL;
-    //拿上下文类加载器
-    jmethodID getContextClassLoader = NULL;
-    //Map类
-    jclass map = NULL;
-    //获取KeySet
-    jmethodID KeySet = NULL;
-    //Set类
-    jclass set = NULL;
-    //转数组
-    jmethodID toArray = NULL;
-    //客户端线程
-    jthread clientThread = NULL;
-
-    //定义类
-    //jmethodID defineClass = NULL;
 
     //客户端入口类
     jclass loaderClass = NULL;
 
-    //是否已经加载
+    //是否已经加载 (Re-Transform)
     bool isLoaded = false;
 
     //寻找类
@@ -121,25 +93,7 @@ DWORD WINAPI MainThread(JNIEnv* env) {
         char* signature;
         jvmTiEnv->GetClassSignature(loadedClasses[i], &signature, NULL);
 
-        if (!strcmp(signature, "Ljava/lang/Thread;")) {
-            thread = loadedClasses[i];
-            //std::cout << "Found java.lang.Thread" << std::endl;
-        }
-
-        if (!strcmp(signature, "Ljava/util/Set;")) {
-            set = loadedClasses[i];
-            //std::cout << "Found java.util.Set" << std::endl;
-        }
-
-        if (!strcmp(signature, "Ljava/util/Map;")) {
-            map = loadedClasses[i];
-            //std::cout << "Found java.util.Map" << std::endl;
-        }
-
-        if (!strcmp(signature, "Ljava/lang/ClassLoader;")) {
-            java_lang_ClassLoader = loadedClasses[i];
-            //std::cout << "Found java.lang.ClassLoader" << std::endl;
-        }
+        // 通过判断入口类是否定义来判断是否二次注入
         if (!strcmp(signature, "LLoader;")) {
             isLoaded = true;
             loaderClass = loadedClasses[i];
@@ -147,52 +101,57 @@ DWORD WINAPI MainThread(JNIEnv* env) {
         }
     }
 
+    //寻找类
+    jclass java_lang_ClassLoader = env->FindClass("java/lang/ClassLoader");
+    jclass java_lang_Thread = env->FindClass("java/lang/Thread");
+    jclass java_util_Set = env->FindClass("java/util/Set");
+    jclass java_util_Map = env->FindClass("java/util/Map");
     //寻找方法
-    getAllStackTraces = env->GetStaticMethodID(thread, "getAllStackTraces", "()Ljava/util/Map;");
-    getThreadName = env->GetMethodID(thread, "getName", "()Ljava/lang/String;");
-    getContextClassLoader = env->GetMethodID(thread, "getContextClassLoader", "()Ljava/lang/ClassLoader;");
-
-    KeySet = env->GetMethodID(map, "keySet", "()Ljava/util/Set;");
-    toArray = env->GetMethodID(set, "toArray", "()[Ljava/lang/Object;");
-    //defineClass = env->GetMethodID(java_lang_ClassLoader, "defineClass", "([BII)Ljava/lang/Class;");
+    //获取KeySet
+    jmethodID KeySet = env->GetMethodID(java_util_Map, "keySet", "()Ljava/util/Set;");
+    //转数组
+    jmethodID toArray = env->GetMethodID(java_util_Set, "toArray", "()[Ljava/lang/Object;");
+    //获取所有的栈追踪
+    jmethodID getAllStackTraces = env->GetStaticMethodID(java_lang_Thread, "getAllStackTraces", "()Ljava/util/Map;");
+    //获取名字
+    jmethodID getThreadName = env->GetMethodID(java_lang_Thread, "getName", "()Ljava/lang/String;");
+    //拿上下文类加载器
+    jmethodID getContextClassLoader = env->GetMethodID(java_lang_Thread, "getContextClassLoader", "()Ljava/lang/ClassLoader;");
 
     //得到所有线程
-    jobjectArray allThread = (jobjectArray)env->CallObjectMethod(env->CallObjectMethod(env->CallStaticObjectMethod(thread, getAllStackTraces), KeySet), toArray);
+    jobjectArray allThread = (jobjectArray)env->CallObjectMethod(env->CallObjectMethod(env->CallStaticObjectMethod(java_lang_Thread, getAllStackTraces), KeySet), toArray);
 
+    //查找客户端线程
+    jthread clientThread = NULL;
     jsize atLength = env->GetArrayLength(allThread);
-
     for (jsize i = 0; i < atLength; i++) {
-        jobject curThread = env->GetObjectArrayElement(allThread, i);
-        jstring ctName = (jstring)env->CallObjectMethod(curThread, getThreadName);
+        jobject currectThread = env->GetObjectArrayElement(allThread, i);
+        jstring ctName = (jstring)env->CallObjectMethod(currectThread, getThreadName);
         const char* ctCname = env->GetStringUTFChars(ctName, 0);
         std::cout << ctCname << std::endl;
         if (!strcmp(ctCname, "Client thread")) {
-            clientThread = curThread;
+            clientThread = currectThread;
             std::cout << "Found Client Thread" << std::endl;
             break;
         }
     }
 
     //拿到类加载器
-    CtxClassLoader = env->CallObjectMethod(clientThread, getContextClassLoader);
-            
-    java_lang_ClassLoader = env->FindClass("java/lang/ClassLoader");
-    if (!CtxClassLoader) {
-        printf("[Loader] Minecraft Not Found");
-        MessageBoxA(NULL, "Minecraft Not Found", randstr(8), MB_OK | MB_ICONERROR);
+    jobject ContextClassLoader = env->CallObjectMethod(clientThread, getContextClassLoader);
+
+    if (!ContextClassLoader) {
+        printf("[Loader] ContextClassLoader Not Found");
+        MessageBoxA(NULL, "ContextClassLoader Not Found", randstr(8), MB_OK | MB_ICONERROR);
         return NULL;
     }
-    jclass loadingClass = NULL;
-    jsize tempClassIndex = 0;
-    jsize lastClassIndex = 0;
-    for (jsize j = 0; j != classCount; j++) {
-        char* lastClass = new char[classSizes[j] + 1];
-        for (jsize classIndex = 0; classIndex != classSizes[j]; classIndex++) {
-            tempClassIndex++;;
-            lastClass[classIndex] = classes[lastClassIndex + classIndex];
-        }
-        if (!isLoaded) {
-            loadingClass = env->DefineClass(NULL, CtxClassLoader, (jbyte*)lastClass, classSizes[j]);
+
+    // 定义所以类
+    if (!isLoaded) {
+        for (jsize i = 0, currectOffset = 0; i < classCount; i++) {
+            unsigned int currectSize = classSizes[i];
+            char* currectClass = new char[currectSize]; //从堆内存申请数组
+            std::copy(classes + currectOffset, classes + currectOffset + currectSize, currectClass);
+            jclass loadingClass = loadingClass = env->DefineClass(NULL, ContextClassLoader, (jbyte*)currectClass, currectSize);
 
             char* signature;
             jvmTiEnv->GetClassSignature(loadingClass, &signature, NULL);
@@ -202,14 +161,12 @@ DWORD WINAPI MainThread(JNIEnv* env) {
             if (!strcmp(signature, "LLoader;")) {
                 loaderClass = loadingClass;
             }
-            if (!loadingClass) {
-
-            }
-            delete[]lastClass;
-            lastClassIndex = tempClassIndex;
+            delete[]currectClass; //释放内存
+            currectOffset += currectSize;
         }
     }
 
+    // 初始化入口类
     if (!loaderClass) {
         std::cout << "[Loader] Loader Class Not Found" << std::endl;
         MessageBoxA(NULL, "Loader Class Not Found", randstr(8), MB_OK | MB_ICONEXCLAMATION);
@@ -240,29 +197,25 @@ PVOID unload(PVOID arg) {
     FreeLibraryAndExitThread(hm, 0);
 }
 
-
-//====================================================================================================
-
 typedef void(*Java_org_lwjgl_opengl_GL11_nglFlush)(JNIEnv* env, jclass clazz, jlong lVar);
 
-Java_org_lwjgl_opengl_GL11_nglFlush nglFlush = NULL;
+Java_org_lwjgl_opengl_GL11_nglFlush nglFlush = nullptr;
 
 void nglFlush_Hook(JNIEnv* env, jclass clazz, jlong lVar) {
-    nglFlush(env, clazz, lVar);
-    RemoveHook(nglFlush);
+    while (nglFlush == nullptr); //等待赋值执行完毕
+    nglFlush(env, clazz, lVar); //运行原始方法
+    unhook(nglFlush); //取消hook
     MainThread(env);
     CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)unload, NULL, 0, NULL);
     return;
 }
 
-//====================================================================================================
 
-
-PVOID WINAPI hook(PVOID arg) {
+PVOID WINAPI lwjgl_hook(PVOID arg) {
     HMODULE jvm = GetModuleHandlePeb(L"lwjgl64.dll");
 
-    Java_org_lwjgl_opengl_GL11_nglFlush nglFlush_address = (Java_org_lwjgl_opengl_GL11_nglFlush)GetProcAddressPeb(jvm, "Java_org_lwjgl_opengl_GL11_nglFlush");
-    SetHook(nglFlush_address, nglFlush_Hook, reinterpret_cast<PVOID*>(&nglFlush));
+    Java_org_lwjgl_opengl_GL11_nglFlush nglFlush_address = (Java_org_lwjgl_opengl_GL11_nglFlush)GetProcAddressPeb(jvm, "Java_org_lwjgl_opengl_GL11_nglFlush"); // 获得入口方法
+    nglFlush = (Java_org_lwjgl_opengl_GL11_nglFlush) hook(nglFlush_address, nglFlush_Hook); //替换nglFlush方法为Hook方法并保存原始方法函数指针
 
     return NULL;
 }
@@ -280,7 +233,7 @@ extern "C" __declspec(dllexport) BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD
         freopen_s(&stream, "CONOUT$", "w+t", stdout);
         freopen_s(&stream, "CONIN$", "r+t", stdin);
         //  MessageBoxA(NULL, "ATTACHED", "NHC", MB_OK | MB_ICONINFORMATION);
-        CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)hook, NULL, 0, NULL);
+        CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)lwjgl_hook, NULL, 0, NULL);
         break;
     }
 

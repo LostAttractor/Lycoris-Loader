@@ -15,9 +15,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="framework.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
     <ClInclude Include="pch.h">
       <Filter>头文件</Filter>
     </ClInclude>
@@ -33,10 +30,10 @@
     <ClInclude Include="MargeleAntiCheatHitboxDisabler.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="HookLib.h">
-      <Filter>源文件</Filter>
-    </ClInclude>
     <ClInclude Include="loader.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="classes.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

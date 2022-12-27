@@ -1,6 +1,4 @@
-#include <windows.h>
-#include <winternl.h>
-#include <psapi.h>
+#include "pch.h"
 
 size_t wlindexof(const wchar_t* str, size_t len, wchar_t c);
 HMODULE GetModuleHandlePeb(LPCWSTR name);
